@@ -19,12 +19,17 @@ python lanmap.py
 
 ## Đóng gói và phát hành
 
-1. Đổi `APP_VERSION` trong `lanmap.py` rồi commit và push mã nguồn lên `main`.
-2. Dùng lệnh dưới đây để tạo `dist\LanMap.exe`. Kiểm tra bằng cách chép riêng file EXE sang một máy Windows 11 x64 chưa cài Python và mở bằng tài khoản thường. Kiểm tra splash, sơ đồ và cửa sổ Kiểm tra cập nhật.
-3. GitHub → **Releases → Draft a new release**. Tạo tag tương ứng với mã nguồn đã đẩy, ví dụ `v3.9.1`, chọn nhánh `main`. Gắn `dist\LanMap.exe` và chọn **Set as the latest release** trước khi bấm **Publish release**.
+1. Cập nhật `APP_VERSION` trong `lanmap.py` và `CLIENT_VERSION` trong `lanmap_agent.py` theo cùng phiên bản. Đưa mã nguồn lên nhánh `main`.
+2. Dùng hai lệnh dưới đây để tạo `dist\LanMap.exe` và `dist\LanMap_Client.exe`. Chép từng file EXE sang máy Windows 11 x64 chưa cài Python để thử mở bằng tài khoản thường và kiểm tra nút cập nhật.
+3. GitHub → **Releases → Draft a new release**. Tạo tag tương ứng, ví dụ `v3.9.2`, chọn nhánh `main`, đính kèm cả hai file EXE rồi chọn **Set as the latest release** trước khi bấm **Publish release**.
 
 ```powershell
 python -m PyInstaller --noconfirm LanMap.spec
+python -m PyInstaller --noconfirm LanMap_Client.spec
 ```
 
-`lanmap_agent.py` và `LanMap_Client.spec` dùng cho LanMap Client. Bản phát hành ứng dụng quản trị dùng asset `LanMap.exe`.
+## LanMap Client
+
+[Tải LanMap_Client.exe](https://github.com/honggiabao2911/LanMap/releases/latest/download/LanMap_Client.exe)
+
+LanMap Client chạy trên máy Windows cần được quản lý trong LAN. Từ v3.9.2, bấm **Kiểm tra cập nhật** ngay trong cửa sổ Client. Khi có phiên bản mới, Client sẽ mở link tải sau khi bạn xác nhận. Đóng Client rồi thay file cũ bằng file mới.

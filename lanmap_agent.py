@@ -1,5 +1,5 @@
 """
-LanMap Client Agent v2.0 — Siêu nhẹ RAM, Điều khoản sử dụng, Tự báo danh Server & Điều khiển Từ xa
+LanMap Client — Tự báo danh Server, điều khiển có đồng ý và kiểm tra cập nhật
 - Lần đầu mở yêu cầu đọc & đồng ý Điều khoản sử dụng + đặt Tên máy / Chủ máy gửi lên LanMap Server.
 - Tự động báo danh qua UDP 55125 để LanMap Server quét là biết ngay máy nào cài Client & của ai.
 - Hỗ trợ 1-click kích hoạt Wake-on-LAN (WoL) để Server có thể bật máy từ xa.
@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import platform
 import queue
+import re
 import socket
 import subprocess
 import sys
@@ -27,6 +28,8 @@ import threading
 import time
 from tkinter import messagebox
 from typing import Any
+import urllib.error
+import urllib.request
 import uuid
 import webbrowser
 
@@ -36,6 +39,10 @@ try:
     import psutil  # type: ignore
 except Exception:
     psutil = None
+
+CLIENT_VERSION = "3.9.2"
+UPDATE_REPO = "honggiabao2911/LanMap"
+CLIENT_ASSET_NAME = "LanMap_Client.exe"
 
 AGENT_PORT = 55124
 DISCOVER_PORT = 55125
@@ -323,6 +330,43 @@ def collect_top_processes() -> str:
     return "=== TOP 20 ỨNG DỤNG ĐANG CHẠY ===\n" + "\n".join(f"  PID {pid:<6} | RAM {mem:5.1f}% | {name}" for mem, name, pid in rows[:20])
 
 
+def check_client_release() -> tuple[str, str]:
+    """Return a Vietnamese status and a download URL only for a newer Client asset."""
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"LanMap-Client/{CLIENT_VERSION}",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            release = json.load(response)
+        if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
+            return "Chưa có bản LanMap Client phát hành chính thức.", ""
+        tag = release.get("tag_name")
+        version = re.fullmatch(r"v([0-9]+)\.([0-9]+)\.([0-9]+)", tag or "") if isinstance(tag, str) else None
+        if version is None:
+            return "Phiên bản trên GitHub chưa có tag hợp lệ, ví dụ v3.9.2.", ""
+        assets = release.get("assets")
+        if not isinstance(assets, list) or not any(
+            isinstance(asset, dict) and asset.get("name") == CLIENT_ASSET_NAME
+            and asset.get("state") == "uploaded"
+            for asset in assets
+        ):
+            return f"Release {tag} chưa đính kèm {CLIENT_ASSET_NAME}.", ""
+        if tuple(map(int, version.groups())) <= tuple(map(int, CLIENT_VERSION.split("."))):
+            return f"Bạn đang dùng LanMap Client v{CLIENT_VERSION}. GitHub chưa có bản Client mới hơn.", ""
+        download_url = f"https://github.com/{UPDATE_REPO}/releases/download/{tag}/{CLIENT_ASSET_NAME}"
+        return f"Đã có LanMap Client {tag}. Bạn muốn mở link tải trên GitHub?", download_url
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return "GitHub chưa có bản phát hành công khai cho LanMap.", ""
+        return f"GitHub trả về lỗi HTTP {exc.code}. Hãy thử lại sau.", ""
+    except (OSError, ValueError):
+        return "Chưa đọc được thông tin cập nhật. Hãy kiểm tra kết nối Internet rồi thử lại.", ""
+
+
 class OnboardingDialog(ctk.CTkToplevel):
     """Hộp thoại Điều khoản sử dụng & Đặt tên máy khi lần đầu cài/mở LanMap Client."""
 
@@ -393,7 +437,7 @@ class LanMapClientApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         self.cfg = load_config()
-        self.title("LanMap Client Agent v2.0 — Nhẹ, Mượt & Tự Báo Danh")
+        self.title(f"LanMap Client v{CLIENT_VERSION}")
         self.geometry("560x500")
         self.minsize(500, 440)
         self._stop = threading.Event()
@@ -421,7 +465,17 @@ class LanMapClientApp(ctk.CTk):
 
         head = ctk.CTkFrame(self, corner_radius=0, fg_color="#0f2a52")
         head.pack(fill="x")
-        ctk.CTkLabel(head, text="LanMap Client Agent v2.0", font=ctk.CTkFont(size=18, weight="bold"), text_color="#ffffff").pack(anchor="w", padx=16, pady=(10, 2))
+        heading = ctk.CTkFrame(head, fg_color="transparent")
+        heading.pack(fill="x", padx=16, pady=(10, 2))
+        ctk.CTkLabel(
+            heading, text=f"LanMap Client v{CLIENT_VERSION}",
+            font=ctk.CTkFont(size=18, weight="bold"), text_color="#ffffff",
+        ).pack(side="left")
+        self.update_btn = ctk.CTkButton(
+            heading, text="Kiểm tra cập nhật", width=125, height=28,
+            command=self._check_update,
+        )
+        self.update_btn.pack(side="right")
         ctk.CTkLabel(head, text=f"IP: {get_local_ip()}  |  MAC (WoL): {self._my_mac}  |  Cổng: {AGENT_PORT}", font=ctk.CTkFont(size=11), text_color="#bae6fd").pack(anchor="w", padx=16, pady=(0, 10))
 
         cfg_box = ctk.CTkFrame(self, corner_radius=8)
@@ -465,6 +519,22 @@ class LanMapClientApp(ctk.CTk):
         threading.Thread(target=self._server_loop, daemon=True).start()
         threading.Thread(target=self._discovery_beacon_loop, daemon=True).start()
         self.after(150, self._poll_ui)
+
+    def _check_update(self) -> None:
+        self.update_btn.configure(state="disabled", text="Đang kiểm tra…")
+
+        def worker() -> None:
+            self._ui_q.put(("client_update", check_client_release()))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_update_result(self, status: str, url: str) -> None:
+        self.update_btn.configure(state="normal", text="Kiểm tra cập nhật")
+        if url:
+            if messagebox.askyesno("Cập nhật LanMap Client", status, parent=self):
+                webbrowser.open(url)
+        else:
+            messagebox.showinfo("Cập nhật LanMap Client", status, parent=self)
 
     def _beacon_payload(self) -> bytes:
         return json.dumps({
@@ -713,6 +783,8 @@ class LanMapClientApp(ctk.CTk):
                 kind, data = self._ui_q.get_nowait()
                 if kind == "log":
                     self._log(str(data))
+                elif kind == "client_update":
+                    self._show_update_result(*data)
                 elif kind == "approved":
                     sender, ip = data
                     self.revoke_btn.configure(state="normal")

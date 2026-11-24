@@ -60,7 +60,7 @@ except Exception:
 # =============================================================================
 
 APP_NAME = "LanMap"
-APP_VERSION = "3.9.1"
+APP_VERSION = "3.9.2"
 DEFAULT_GITHUB_REPO = "honggiabao2911/LanMap"
 
 DEFAULT_FAILURE_THRESHOLD = 3
